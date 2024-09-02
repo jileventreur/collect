@@ -1,6 +1,7 @@
 #pragma once
 #include <expected>
 #include <ranges>
+#include <algorithm>
 #include <vector>
 
 namespace detail {
@@ -16,6 +17,15 @@ namespace detail {
         { c.capacity() } -> std::same_as<std::ranges::range_size_t<C>>;
         { c.reserve(std::ranges::range_size_t<R>(0)) };
     };
+
+    template <class C>
+    concept insertable = requires(C c) {
+        std::inserter(c, std::ranges::end(c));
+    };
+
+    template <class>
+    constexpr inline bool always_false = false;
+
 }  // namespace detail
 
 namespace ranges {
@@ -38,19 +48,42 @@ std::expected<
     collect(R&& range) {
     using value_type = typename std::ranges::range_value_t<R>::value_type;
     using error_type = typename std::ranges::range_value_t<R>::error_type;
-    using return_type = std::expected<Container<value_type>, error_type>;
+    using container_type = Container<value_type>;
+    using return_type = std::expected<container_type, error_type>;
 
-    Container<value_type> success;
-    if constexpr (detail::reservable<Container<value_type>, R>)
+    if constexpr (std::ranges::forward_range<R> && detail::insertable<container_type>)
     {
-        success.reserve(std::ranges::size(range));
+        for (auto&& expected : range) {
+            if (expected.has_value() == false)
+                return std::unexpected(std::move(expected.error()));
+        }
+
+        container_type success;
+        if constexpr (detail::reservable<container_type, R>)
+        {
+            success.reserve(std::ranges::size(range));
+        }
+        std::ranges::transform(range, std::inserter(success, std::end(success)),
+                [](auto &&exp) { return exp.value(); });
+        return return_type(success);
     }
-    for (auto&& expected : range) {
-        if (expected.has_value() == false)
-            return std::unexpected(std::move(expected.error()));
-        success.push_back(expected.value());
+    else if (detail::insertable<container_type>){
+        container_type success;
+        if constexpr (detail::reservable<container_type, R>)
+        {
+            success.reserve(std::ranges::size(range));
+        }
+        auto inserter = std::inserter(success, std::end(success));
+        for (auto&& expected : range) {
+            if (expected.has_value() == false)
+                return std::unexpected(std::move(expected.error()));
+            *inserter = std::move(expected.value());
+        }
+        return return_type(std::move(success));
     }
-    return return_type(std::move(success));
+    else {
+        static_assert(detail::always_false<container_type>, "Container is not insertable");
+    }
 }
 }  // namespace ranges
 

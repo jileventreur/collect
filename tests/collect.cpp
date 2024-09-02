@@ -34,6 +34,8 @@ TEST_CASE("specify vector") {
 
 template<class Value>
 struct fake_vector {
+    std::vector<Value> vec{};
+    using value_type = std::vector<Value>::value_type;
     bool reserve_called = false;
     size_t reserved = 0u;
     void reserve(size_t i) {
@@ -41,30 +43,49 @@ struct fake_vector {
         reserved = i;
     };
 
-    std::vector<Value> vec{};
     auto begin() { return vec.begin(); }
     auto end() { return vec.end(); }
     size_t size() { return {}; }
     size_t capacity() { return {}; }
-    void push_back(auto &&) {}
+    void push_back(auto&&) {}
+    auto insert(auto &&... args) { return vec.insert(args...); }
 };
+static_assert(detail::reservable<fake_vector<int>, VecOfExp>);
 
+#include<iostream>
 TEST_CASE("calls reserve") {
     VecOfExp no_error = { 1, 2, 3 };
-
     auto fake_vec = (no_error | ranges::collect<fake_vector>()).value();
-
-    static_assert(detail::reservable<fake_vector<int>, VecOfExp>);
     REQUIRE(fake_vec.reserve_called);
     REQUIRE(fake_vec.reserved == no_error.size());
-    // maybe test a not std::ranges::sized_range R type
+
+    auto fake_vec2 = *(no_error 
+        // convert to not sized tange
+        | std::views::take_while([](auto&&) {return true; }) 
+        | ranges::collect<fake_vector>());
+    REQUIRE(fake_vec2.reserve_called == false);
+}
+
+#include <list>
+TEST_CASE("to list") {
+    using ExpOfLst = std::expected<std::list<int>, std::string>;
+    VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
+    VecOfExp no_error = { 1, 2, 3 };
+
+    std::same_as<ExpOfLst> auto exp_error = has_error | ranges::collect<std::list>();
+    std::same_as<ExpOfLst> auto exp_value = ranges::collect<std::list>(no_error);
+ 
+
+    REQUIRE(exp_error == std::unexpected("NOT INT"));
+    REQUIRE(exp_value == ExpOfLst(std::list<int>{1, 2, 3}));
 }
 
 // TODO 
 // for reservable container + sized range reserve before filling DONE
 // constexpr test
-// impl for multiple containers
-// for forward_range check first then fill result
+// impl for multiple containers DONE
+// for forward_range check first then fill result DONE
+//  -> to check
 // impl for optional-like
 // for non expected, optional act like range::to ? 
 // enable nested containers ?
