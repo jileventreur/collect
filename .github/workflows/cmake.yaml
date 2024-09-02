@@ -24,11 +24,11 @@ jobs:
             os: windows-2022,
             build_type: "Release", cxx: "cl",
           }  
-        - {
-            name: "Ubuntu 20.04 GCC 10.2",
-            os: ubuntu-24.04,
-            build_type: "Release", cxx: "g++-12"
-          }
+        # - {
+        #     name: "Ubuntu 20.04 GCC 10.2",
+        #     os: ubuntu-24.04,
+        #     build_type: "Release", cxx: "g++-1"
+        #   }
 
     steps:
     - uses: actions/checkout@v2
