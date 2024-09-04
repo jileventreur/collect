@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <vector>
 #include <concepts>
+#include <type_traits>
 
 namespace detail {
 
@@ -106,26 +107,52 @@ namespace detail {
                 "T is neither an expected or optional like type");
     }
 
-    template <template <typename...> typename Container,
-        template <typename...> typename Exp, class Value, class Error>
-        requires(expected_like<Exp<Value, Error>>)
-    [[maybe_unused]] constexpr auto get_return_type(Exp<Value, Error>) -> Exp<Container<Value>, Error>;
+    /// nested range collect tools : https://godbolt.org/z/77Wzb8xsK
+    /// TOOL 1 : contains_potential_type_underneath
+    /// Needed for deciding to act like ranges::to if no potential underneah
+    template <typename T>
+    struct contains_potential_type_underneath : std::false_type {};
 
-    template <template <typename...> typename Container,
-        template <typename...> typename Opt, class Value>
+    template <template <class...> class T, class... Args>
+        requires potential_type<std::ranges::range_value_t<T<Args...>>>
+    struct contains_potential_type_underneath<T<Args...>> : std::true_type {};
+
+    template <template <class...> class T, class... Args>
+        requires std::ranges::range<std::ranges::range_value_t<T<Args...>>> &&
+    (!potential_type<std::ranges::range_value_t<T<Args...>>>)
+        struct contains_potential_type_underneath<T<Args...>>
+        : contains_potential_type_underneath<
+        std::ranges::range_value_t<T<Args...>>> {};
+
+    template <class T>
+    static constexpr bool contains_potential_type_underneath_v =
+        contains_potential_type_underneath<T>::value;
+
+    template <typename Container,
+        template <typename...> class Exp, class Value, class Error>
+        requires(expected_like<Exp<Value, Error>>)
+    [[maybe_unused]] constexpr auto get_return_type(Exp<Value, Error>) -> Exp<Container, Error>;
+
+    template <typename Container,
+        template <typename...> class Opt, class Value>
         requires(optional_like<Opt<Value>>)
-    [[maybe_unused]] constexpr auto get_return_type(Opt<Value>) -> Opt<Container<Value>>;
+    [[maybe_unused]] constexpr auto get_return_type(Opt<Value>) -> Opt<Container>;
+
+    ////NESTED WIP
+    //template <template <typename...> typename Container, class RangeValue>
+    //    requires(contains_potential_type_underneath_v<RangeValue> == false)
+    //[[maybe_unused]] constexpr auto get_return_type(RangeValue) -> Container<RangeValue>;
 
 }  // namespace detail
 
 namespace ranges {
 
-    template <template <typename...> typename Container, class Input>
+    template <typename Container, class Input>
     struct collect_return_type {
         using type = decltype(detail::get_return_type<Container>(std::declval<Input>()));
     };
 
-    template <template <typename...> typename Container, class Input>
+    template <typename Container, class Input>
     using collect_return_type_t = collect_return_type<Container, Input>::type;
 
     /// <summary>
@@ -137,17 +164,29 @@ namespace ranges {
     /// container (currently only works with std::vector) or in the error case, the
     /// first error found in the range
     /// </returns>
-
-    template <template <typename...> class Container = std::vector,
-        std::ranges::input_range R>
+    /// TODO for nested and acts like ranges::to :
+    ///  - check that dimensionality of Container and input range R match
+    ///  - edit collect_return_type to return std::ranges::to type if no potential underneath
+    template <std::ranges::input_range Container,
+              std::ranges::input_range R>
         requires detail::potential_type<std::ranges::range_value_t<R>>
-    [[nodiscard]] constexpr
-        collect_return_type_t<Container, std::ranges::range_value_t<R>>
+        //&& requires std::same_as(
+        //    std::ranges::range_value_t<Container>,
+        //    typename std::ranges::range_value_t<R>::value_type
+        //)
+        [[nodiscard]] constexpr
+        auto
+        //collect_return_type_t<Container, std::ranges::range_value_t<R>>
         collect(R&& range) {
         using value_type = typename std::ranges::range_value_t<R>::value_type;
-        //using error_type = typename std::ranges::range_value_t<R>::error_type;
-        using container_type = Container<value_type>;
+        using container_type = Container;
         using return_type = collect_return_type_t<Container, std::ranges::range_value_t<R>>;
+
+        ////static_assert(detail::contains_potential_type_underneath_v<std::remove_cvref_t<R>>);
+        //if constexpr (detail::contains_potential_type_underneath_v<std::remove_cvref_t<R>> == false)
+        //{ // if no potential in any underlying container value acts like std::ranges::to
+        //    return std::ranges::to<Container>(range);
+        //}
 
         if constexpr (std::constructible_from<container_type/*, Args...*/> == false) //TODO add args
         {
@@ -205,11 +244,28 @@ namespace ranges {
             static_assert(detail::always_false<container_type>, "Container is not insertable");
         }
     }
+
+    template <template <typename...> typename Container = std::vector,
+              std::ranges::input_range R>
+    requires detail::potential_type<std::ranges::range_value_t<R>>
+    // requires dimensionality of R is 1
+    constexpr auto collect(R&& r) {
+        using range_value = std::ranges::range_value_t<R>;
+        return collect<Container<typename range_value::value_type>>(std::forward<R>(r));
+    }
 }  // namespace ranges
 
 namespace detail {
     template<template <typename...> class Container = std::vector>
-    struct collect_fn : std::ranges::range_adaptor_closure<collect_fn<Container>> {
+    struct collect_fn_tplt : std::ranges::range_adaptor_closure<collect_fn_tplt<Container>> {
+        template <std::ranges::input_range R>
+        constexpr auto operator()(R&& range) {
+            return ranges::collect<Container>(std::forward<R>(range));
+        }
+    };
+
+    template <std::ranges::input_range Container>
+    struct collect_fn_cont: std::ranges::range_adaptor_closure<collect_fn_cont<Container>> {
         template <std::ranges::input_range R>
         constexpr auto operator()(R&& range) {
             return ranges::collect<Container>(std::forward<R>(range));
@@ -228,5 +284,9 @@ namespace ranges {
     /// first error found in the range
     /// </returns>
     template<template <typename...> class Container = std::vector>
-    constexpr inline auto collect() -> detail::collect_fn<Container> { return {}; }
+    constexpr inline auto collect() -> detail::collect_fn_tplt<Container> { return {}; }
+
+    template <std::ranges::input_range Container>
+    constexpr auto collect() -> detail::collect_fn_cont<Container>{ return {}; };
+    
 }  // namespace ranges
