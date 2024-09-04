@@ -34,12 +34,15 @@ TEST_CASE("basic optional") {
 
 template<class Value>
 struct my_optional {
+    //interface
     using value_type = Value;
     constexpr my_optional() = default;
     constexpr my_optional(Value val) : value_(val), default_init(false) {};
 
     constexpr value_type value() { return value_; }
-    constexpr bool has_value() { return not default_init; }
+    constexpr bool has_value() { return ! default_init; }
+    
+    //details
     Value value_ = {};
     bool default_init = true;
 };
@@ -67,6 +70,58 @@ TEST_CASE("custom optional") {
         auto opt_result = no_error | ranges::collect();
         REQUIRE(opt_result.has_value());
         REQUIRE(opt_result.value() == std::vector{1, 2, 3});
+    }
+}
+
+template <class Value, class Error>
+struct my_expected{
+    //interface
+    using value_type = Value;
+    using error_type = Error;
+    struct unexpected_type {
+        constexpr unexpected_type(Error error) : error_(error) {};
+        Error error_ = {};
+    };
+
+    constexpr my_expected(unexpected_type unexp) :
+        error_constructed(true), error_(unexp.error_) {}
+    constexpr my_expected(Value val) : value_(val) {}
+
+    constexpr value_type value() { return value_; }
+    constexpr error_type error() { return error_; }
+    constexpr bool has_value() { return ! error_constructed; }
+
+    //details
+    Value value_ = {};
+    Error error_ = {};
+    bool error_constructed = false;
+};
+
+TEST_CASE("custom expected") {
+    using Exp = my_expected<int, bool>;
+    {
+        REQUIRE(detail::expected_like<my_expected<int, bool>>);
+
+        std::vector<Exp> has_error = {
+            Exp(1),
+            Exp(2),
+            Exp(Exp::unexpected_type(true)) };
+        using return_type = ranges::collect_return_type_t<std::vector, std::ranges::range_value_t<decltype(has_error)>>;
+        REQUIRE(detail::expected_like<return_type>);
+
+        auto exp_error = has_error | ranges::collect();
+        REQUIRE(std::same_as<decltype(exp_error), my_expected<std::vector<int>, bool>>);
+        REQUIRE(exp_error.has_value() == false);
+        REQUIRE(exp_error.error() == true);
+    }
+    {
+        std::vector<Exp> no_error = {
+            Exp(1),
+            Exp(2),
+            Exp(3) };
+        auto exp_result = no_error | ranges::collect();
+        REQUIRE(exp_result.has_value());
+        REQUIRE(exp_result.value() == std::vector{ 1, 2, 3 });
     }
 }
 

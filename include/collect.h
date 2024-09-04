@@ -42,26 +42,38 @@ namespace detail {
 
     /// Need to check is_template + one template arg + template<T>::value_type = T
     template <typename T>
-    concept optional_like = std::default_initializable<T>
-        && requires(T c) {
+    concept optional_like = 
+        requires(T c) {
         typename T::value_type;
         { c.has_value() } -> std::same_as<bool>;
         { c.value() };
     }
     && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
-    && T{}.has_value() == false
+    && std::default_initializable<T>
+    && T{}.has_value() == false // error case can be construct thanks to default constructor
     && is_template_type_v<T>
-    && get_template_args_size_v<T> > 0
+    && get_template_args_size_v<T> >= 1
     && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
     && std::constructible_from<T, typename T::value_type>;
 
     template <typename T>
     concept expected_like = requires(T c) {
         typename T::value_type;
-        { c.has_value() } -> std::same_as<bool>;
         typename T::error_type;
         typename T::unexpected_type;
-    };
+        { c.has_value() } -> std::same_as<bool>;
+        { c.value() };
+        { c.error() };
+    }
+    && std::constructible_from<typename T::unexpected_type, typename T::error_type>
+    && std::constructible_from<T, typename T::unexpected_type>
+    && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
+    && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().error())>, typename T::error_type>
+    && is_template_type_v<T>
+    && get_template_args_size_v<T> >= 2
+    && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
+    && std::same_as<get_template_n_arg_type_t<T, 1>, typename T::error_type>
+    ;
 
     template <typename T>
     concept potential_type = optional_like<T> || expected_like<T>;
