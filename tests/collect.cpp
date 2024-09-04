@@ -7,16 +7,67 @@
 using VecOfExp = std::vector<std::expected<int, std::string>>;
 using ExpOfVec = std::expected<std::vector<int>, std::string>;
 
-TEST_CASE("basic") {
+using VecOfOpt = std::vector<std::optional<int>>;
+using OptOfVec = std::optional<std::vector<int>>;
 
+TEST_CASE("basic expected") {
     VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
     VecOfExp no_error = { 1, 2, 3 };
 
     std::same_as<ExpOfVec> auto exp_error = has_error | ranges::collect();
     std::same_as<ExpOfVec> auto exp_value = ranges::collect(no_error);
-
+    
     REQUIRE(exp_error == std::unexpected("NOT INT"));
     REQUIRE(exp_value == ExpOfVec(std::vector<int>{1, 2, 3}));
+}
+
+TEST_CASE("basic optional") {
+    VecOfOpt  has_error = { 1, 2, std::nullopt };
+    VecOfOpt no_error = { 1, 2, 3 };
+
+    std::same_as<OptOfVec> auto opt_error = has_error | ranges::collect();
+    std::same_as<OptOfVec> auto opt_value = ranges::collect(no_error);
+
+    REQUIRE(opt_error == std::nullopt);
+    REQUIRE(opt_value == OptOfVec(std::vector<int>{1, 2, 3}));
+}
+
+template<class Value>
+struct my_optional {
+    using value_type = Value;
+    constexpr my_optional() = default;
+    constexpr my_optional(Value val) : value_(val), default_init(false) {};
+
+    constexpr value_type value() { return value_; }
+    constexpr bool has_value() { return not default_init; }
+    Value value_ = {};
+    bool default_init = true;
+};
+
+TEST_CASE("custom optional") {
+    {
+        REQUIRE(detail::optional_like<my_optional<int>>);
+
+        std::vector<my_optional<int>> has_error = {
+            my_optional<int>(1),
+            my_optional<int>(2),
+            my_optional<int>() };
+        using return_type = ranges::collect_return_type_t<std::vector, std::ranges::range_value_t<decltype(has_error)>>;
+        REQUIRE(detail::optional_like<return_type>);
+
+        auto opt_error = has_error | ranges::collect();
+        REQUIRE(std::same_as<decltype(opt_error), my_optional<std::vector<int>>>);
+        REQUIRE(opt_error.has_value() == false);
+    }
+    {
+        std::vector<my_optional<int>> no_error = {
+        my_optional<int>(1),
+        my_optional<int>(2),
+        my_optional<int>(3)};
+        auto opt_result = no_error | ranges::collect();
+        REQUIRE(opt_result.has_value());
+        REQUIRE(opt_result.value() == std::vector{1, 2, 3});
+    }
 }
 
 
@@ -35,6 +86,7 @@ TEST_CASE("specify vector") {
 template<class Value>
 struct fake_vector {
     std::vector<Value> vec{};
+    
     using value_type = std::vector<Value>::value_type;
     bool reserve_called = false;
     size_t reserved = 0u;
@@ -42,6 +94,11 @@ struct fake_vector {
         reserve_called = true;
         reserved = i;
     };
+
+    inline static int contructed_count = 0;
+    fake_vector() {
+        ++contructed_count;
+    }
 
     auto begin() { return vec.begin(); }
     auto end() { return vec.end(); }
@@ -61,7 +118,7 @@ TEST_CASE("calls reserve") {
 
     auto fake_vec2 = *(no_error 
         // convert to not sized tange
-        | std::views::take_while([](auto&&) {return true; }) 
+        | std::views::take_while([](auto&&) { return true; }) 
         | ranges::collect<fake_vector>());
     REQUIRE(fake_vec2.reserve_called == false);
 }
@@ -80,13 +137,41 @@ TEST_CASE("to list") {
     REQUIRE(exp_value == ExpOfLst(std::list<int>{1, 2, 3}));
 }
 
-// TODO 
-// for reservable container + sized range reserve before filling DONE
-// constexpr test
-// impl for multiple containers DONE
-// for forward_range check first then fill result DONE
-//  -> to check
-// impl for optional-like
-// for non expected, optional act like range::to ? 
-// enable nested containers ?
-// work with associative types
+//#include <iostream>
+//TEST_CASE("no construction on forward_input error") {
+//    fake_vector<int>::contructed_count = 0;
+//    VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
+//
+//    auto exp_error = has_error | ranges::collect();
+//
+//    REQUIRE(fake_vector<int>::contructed_count == 0);
+//
+//    fake_vector<int>::contructed_count = 0;
+//
+//    //todo test on input_range
+//    //auto test = std::views::iota(0) 
+//    //    | std::views::transform([&](auto i) { return has_error[i];});
+//    //static_assert(std::ranges::random_access_range<decltype(test)>);
+//    //REQUIRE(fake_vector<int>::contructed_count == 1);
+//}
+
+//// TODO 
+//// for reservable container + sized range reserve before filling DONE
+//// impl for multiple containers DONE
+//// for forward_range check first then fill result DONE
+////  -> check input_ranges pass
+//// impl for optional/potential-like :
+////  * be able to construct error return type for both case OK
+////  * deduce return type OK
+////  * test with optional custom OK
+////  * test with expected custom OK
+//// constexpr test
+//// for non expected, optional act like range::to ? 
+//// enable nested containers ?
+//// work with associative types
+//
+//// Impl question :
+//// Is two pass even a good idea or should i always allocate as I check?
+//// for non expected, optional act like range::to ? 
+//// should i work for std::expected + optional only and return accordingly or with expected and optional like and return those type?
+//// enable nested? if multiple nested expected/optional layers, return only the expected of the first or do them all when possible? 
