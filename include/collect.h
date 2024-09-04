@@ -138,6 +138,7 @@ namespace detail {
         requires(optional_like<Opt<Value>>)
     [[maybe_unused]] constexpr auto get_return_type(Opt<Value>) -> Opt<Container>;
 
+
     ////NESTED WIP
     //template <template <typename...> typename Container, class RangeValue>
     //    requires(contains_potential_type_underneath_v<RangeValue> == false)
@@ -169,14 +170,13 @@ namespace ranges {
     ///  - edit collect_return_type to return std::ranges::to type if no potential underneath
     template <std::ranges::input_range Container,
               std::ranges::input_range R>
-        requires detail::potential_type<std::ranges::range_value_t<R>>
-        //&& requires std::same_as(
-        //    std::ranges::range_value_t<Container>,
-        //    typename std::ranges::range_value_t<R>::value_type
-        //)
+        requires 
+            detail::potential_type<std::ranges::range_value_t<R>>
+            && (std::same_as<
+                std::ranges::range_value_t<Container>,
+                typename std::ranges::range_value_t<R>::value_type>)
         [[nodiscard]] constexpr
-        auto
-        //collect_return_type_t<Container, std::ranges::range_value_t<R>>
+        collect_return_type_t<Container, std::ranges::range_value_t<R>>
         collect(R&& range) {
         using value_type = typename std::ranges::range_value_t<R>::value_type;
         using container_type = Container;
