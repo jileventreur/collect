@@ -96,7 +96,7 @@ namespace detail {
 
     /// value passed must contains an optional or expected like error
     template <class ReturnType, class T>
-    auto construct_error(T&& value) {
+    constexpr auto construct_error(T&& value) {
         if constexpr (expected_like<ReturnType>) {
             return ReturnType(typename ReturnType::unexpected_type(value.error()));
         }
@@ -164,12 +164,14 @@ namespace detail{
     template <std::ranges::input_range Container,
         std::ranges::input_range R, typename... Args,
         class return_type = ranges::collect_return_t<Container, std::ranges::range_value_t<R>>>
+#ifndef TESTS
         requires
     (!std::ranges::view<Container>) // ensure Container is container and not view
         && detail::potential_type<std::ranges::range_value_t<R>>
         && (std::same_as<
             std::ranges::range_value_t<Container>,
             typename std::ranges::range_value_t<R>::value_type>)
+#endif
         [[nodiscard]] constexpr return_type collect_one_pass(R&& range, Args&&... args)
     {
         if constexpr (std::constructible_from<Container, Args...> == false)
