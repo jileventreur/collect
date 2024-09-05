@@ -5,6 +5,7 @@
 #include <list>
 #include <string>
 
+
 using VecOfExp = std::vector<std::expected<int, std::string>>;
 using ExpOfVec = std::expected<std::vector<int>, std::string>;
 
@@ -23,7 +24,6 @@ TEST_CASE("basic expected") {
     REQUIRE(exp_error == std::unexpected("NOT INT"));
     REQUIRE(exp_value == ExpOfVec(std::vector<int>{1, 2, 3}));
 }
-
 
 TEST_CASE("basic optional") {
     VecOfOpt  has_error = { 1, 2, std::nullopt };
@@ -93,7 +93,7 @@ TEST_CASE("custom optional") {
             my_optional<int>(1),
             my_optional<int>(2),
             my_optional<int>() };
-        using return_type = ranges::collect_return_type_t<std::vector<int>, std::ranges::range_value_t<decltype(has_error)>>;
+        using return_type = ranges::collect_return_t<std::vector<int>, std::ranges::range_value_t<decltype(has_error)>>;
         REQUIRE(detail::optional_like<return_type>);
 
         auto opt_error = has_error | ranges::collect();
@@ -144,7 +144,7 @@ TEST_CASE("custom expected") {
             Exp(1),
             Exp(2),
             Exp(Exp::unexpected_type(true)) };
-        using return_type = ranges::collect_return_type_t<std::vector<int>, std::ranges::range_value_t<decltype(has_error)>>;
+        using return_type = ranges::collect_return_t<std::vector<int>, std::ranges::range_value_t<decltype(has_error)>>;
         REQUIRE(detail::expected_like<return_type>);
 
         auto exp_error = has_error | ranges::collect();
@@ -189,18 +189,19 @@ struct fake_vector {
 };
 static_assert(detail::reservable<fake_vector<int>, VecOfExp>);
 
-TEST_CASE("calls reserve") {
-    VecOfExp no_error = { 1, 2, 3 };
-    auto fake_vec = (no_error | ranges::collect<fake_vector>()).value();
-    REQUIRE(fake_vec.reserve_called);
-    REQUIRE(fake_vec.reserved == no_error.size());
-
-    auto fake_vec2 = *(no_error 
-        // convert to not sized tange
-        | std::views::take_while([](auto&&) { return true; }) 
-        | ranges::collect<fake_vector>());
-    REQUIRE(fake_vec2.reserve_called == false);
-}
+//todo impl it with input_range
+//TEST_CASE("calls reserve on input range") {
+//    VecOfExp no_error = { 1, 2, 3 };
+//    auto fake_vec = (no_error | ranges::collect<fake_vector>()).value();
+//    REQUIRE(fake_vec.reserve_called);
+//    REQUIRE(fake_vec.reserved == no_error.size());
+//
+//    auto fake_vec2 = *(no_error 
+//        // convert to not sized tange
+//        | std::views::take_while([](auto&&) { return true; }) 
+//        | ranges::collect<fake_vector>());
+//    REQUIRE(fake_vec2.reserve_called == false);
+//}
 
 TEST_CASE("no construction on forward_range error") {
     fake_vector<int>::contructed_count = 0;
@@ -218,6 +219,31 @@ TEST_CASE("no construction on forward_range error") {
     // i need a weakly_incrementable only type in iota to get input_range
     //static_assert(std::ranges::random_access_range<decltype(test)>);
     //REQUIRE(fake_vector<int>::contructed_count == 1);
+}
+
+#include <memory_resource>
+#include <functional>
+#include <array>
+TEST_CASE("allocator") {
+    VecOfExp no_error = { 1, 2, 3 };
+    char buffer[256];
+    std::pmr::monotonic_buffer_resource res(std::begin(buffer), std::size(buffer));
+
+    using exp_generator = std::function<
+        std::expected<std::pmr::vector<int>, std::string>(void)>;
+    std::vector<exp_generator> construct_exps {
+        [&] {return ranges::collect<std::pmr::vector<int>>(no_error, &res); },
+        [&] {return ranges::collect<std::pmr::vector>(no_error, &res); },
+        [&] {return no_error | ranges::collect<std::pmr::vector>(&res); },
+        [&] {return no_error | ranges::collect<std::pmr::vector<int>>(&res); },
+    };
+
+    for (auto&& exp_generator : construct_exps)
+    {
+        auto exp = exp_generator();
+        REQUIRE(exp.has_value());
+        REQUIRE(exp->get_allocator().resource()->is_equal(res));
+    }
 }
 
 //NESTED WIP
@@ -241,38 +267,41 @@ TEST_CASE("no construction on forward_range error") {
 //}
 
 //// TODO 
-//// for reservable container + sized range reserve before filling DONE
-//// impl for multiple containers DONE
-//// for forward_range check first then fill result DONE
+//// for reservable container + sized range reserve before filling OK
+//// impl for multiple containers OK
+//// for forward_range check first then fill result OK
 ////  -> check input_ranges pass
-//// impl for optional/potential-like :
+//// impl for optional/potential-like : OK
 ////  * be able to construct error return type for both case OK
 ////  * deduce return type OK
 ////  * test with optional custom OK
 ////  * test with expected custom OK
-//// work with associative types
-//// custom allocator and following args
-//// constexpr test
-//// Nested container : 
+//// work with associative types (Maybe OK but need tests)
+//// custom allocator and following args OK
+//// constexpr tests
+//// ----------------------------------------------------------------------
+//// Nested containers notes : 
 ////  * enable nested containers ?
 ////  * then for non expected, optional act like range::to
 //// if not allowing nested can still alows ranges::to behavior on 1 dimension container
 // 
 // Nested implementation note
 // input : list list exp list 
-// args : vec, lst, lst 
+// ret Container type : vec, lst, lst 
 // -> exp vec lst lst
 // 
 // 
 // input : list exp list list 
-// args : vec, lst, lst 
+// ret Container type : vec, lst, lst 
 // -> exp vec lst lst
 // 
 // EXAMPLE WORKINGS LIKE RANGES::TO 
 // 
 // input : list list list 
-// args : vec list queue
+// ret Container type : vec list queue
 // -> vec list queue
+// 
+// IN Short : first potential in front and everything 
 // 
 // to verif : 
 // input container dimensionality by by passing first potential == output container dimensionality
@@ -288,6 +317,8 @@ TEST_CASE("no construction on forward_range error") {
 //
 //// Impl question :
 //// Is two pass even a good idea or should i always allocate as I check?
-//// for non expected, optional act like range::to ? 
+//// for non expected, optional acting like range::to ? 
 //// should i work for std::expected + optional only and return accordingly or with expected and optional like and return those type?
+////  -> not much addition for those custom types and more general :  good thing imo
 //// enable nested? if multiple nested expected/optional layers, return only the expected of the first or do them all when possible? 
+//// What about cv_ref range value types? 

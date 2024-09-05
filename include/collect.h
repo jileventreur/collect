@@ -3,6 +3,7 @@
 #include <vector>
 #include <concepts>
 #include <type_traits>
+#include <tuple>
 
 namespace detail {
 
@@ -149,12 +150,12 @@ namespace detail {
 namespace ranges {
 
     template <typename Container, class Input>
-    struct collect_return_type {
+    struct collect_return {
         using type = decltype(detail::get_return_type<Container>(std::declval<Input>()));
     };
 
-    template <typename Container, class Input>
-    using collect_return_type_t = collect_return_type<Container, Input>::type;
+    template <typename Container, class Input, typename... Args>
+    using collect_return_t = collect_return<Container, Input>::type;
 
     /// <summary>
     /// Take a range of std::expected[value, error] like types and returns an
@@ -169,32 +170,22 @@ namespace ranges {
     ///  - check that dimensionality of Container and input range R match
     ///  - edit collect_return_type to return std::ranges::to type if no potential underneath
     template <std::ranges::input_range Container,
-              std::ranges::input_range R>
-        requires 
-            detail::potential_type<std::ranges::range_value_t<R>>
-            && (std::same_as<
-                std::ranges::range_value_t<Container>,
-                typename std::ranges::range_value_t<R>::value_type>)
-        [[nodiscard]] constexpr
-        collect_return_type_t<Container, std::ranges::range_value_t<R>>
-        collect(R&& range) {
+              std::ranges::input_range R, typename... Args,
+              class RetType = collect_return_t<Container, std::ranges::range_value_t<R>>>
+    requires 
+        (!std::ranges::view<Container>) // ensure Container is container and not view
+        && detail::potential_type<std::ranges::range_value_t<R>>
+        && (std::same_as<
+            std::ranges::range_value_t<Container>,
+            typename std::ranges::range_value_t<R>::value_type>)
+    [[nodiscard]] constexpr RetType collect(R&& range, Args&&... args) 
+    {
         using value_type = typename std::ranges::range_value_t<R>::value_type;
-        using container_type = Container;
-        using return_type = collect_return_type_t<Container, std::ranges::range_value_t<R>>;
-
-        ////static_assert(detail::contains_potential_type_underneath_v<std::remove_cvref_t<R>>);
-        //if constexpr (detail::contains_potential_type_underneath_v<std::remove_cvref_t<R>> == false)
-        //{ // if no potential in any underlying container value acts like std::ranges::to
-        //    return std::ranges::to<Container>(range);
-        //}
-
-        if constexpr (std::constructible_from<container_type/*, Args...*/> == false) //TODO add args
-        {
-            static_assert(detail::always_false<container_type>, "Container is not constructible");
-        }
+        using return_type = collect_return_t<Container, std::ranges::range_value_t<R>>;
 
         // two pass construction case : first check then construct
-        if constexpr (std::ranges::forward_range<R> && detail::insertable<container_type>)
+        //TODO maybe split two construction cases for visibility
+        if constexpr (std::ranges::forward_range<R>)
         {
             // check if error on first pass
             for (auto&& potential_value : range) {
@@ -202,33 +193,19 @@ namespace ranges {
                     return return_type(detail::construct_error<return_type>(std::move(potential_value)));
             }
             //construct from transform
-            auto transform_view = range | std::views::transform([](auto&& exp) { return exp.value(); });
-            using transform_range = decltype(transform_view);
-            //if constexpr (std::constructible_from<container_type, transform_range>) { // maybe never true ? 
-            //    return return_type(container_type(std::move(transform_view)));
-            //}
-            //else 
-            if constexpr (std::constructible_from<container_type, std::from_range_t, transform_range>) {
-                return return_type(container_type(std::from_range, std::move(transform_view)));
-            }
-            else if constexpr (std::indirectly_copyable<std::ranges::iterator_t<transform_range>, std::ranges::iterator_t<container_type>>
-                && detail::insertable<container_type>) {
-                container_type success;
-                if constexpr (detail::reservable<container_type, R>) {
-                    //std::cout << "2 pass reserve\n";
-                    success.reserve(std::ranges::size(range));
-                }
-                std::ranges::copy(std::move(transform_view), std::inserter(success, std::end(success)));
-                return return_type(std::move(success));
-            }
-            else {
-                static_assert(detail::always_false<container_type>, "Container cannot be filled with iterator_t<R>.value()");
-            }
+            auto transform_view = range 
+                | std::views::transform([](auto&& exp) { return exp.value(); });
+            return return_type(transform_view | std::ranges::to<Container>(std::forward<Args>(args)...));
         }
         // one pass construction case : check and fill on the fly
-        else if (detail::insertable<container_type>) {
-            container_type success;
-            if constexpr (detail::reservable<container_type, R>)
+        else if (detail::insertable<Container>) {
+            if constexpr (std::constructible_from<Container, Args...> == false)
+            {
+                static_assert(detail::always_false<Container>, 
+                    "Container is not constructible from args...");
+            }
+            Container success(std::forward<Args>(args)... );
+            if constexpr (detail::reservable<Container, R>)
             {
                 success.reserve(std::ranges::size(range));
             }
@@ -241,34 +218,55 @@ namespace ranges {
             return return_type(std::move(success));
         }
         else {
-            static_assert(detail::always_false<container_type>, "Container is not insertable");
+            static_assert(detail::always_false<Container>, "Container is not insertable");
         }
     }
 
     template <template <typename...> typename Container = std::vector,
-              std::ranges::input_range R>
-    requires detail::potential_type<std::ranges::range_value_t<R>>
-    // requires dimensionality of R is 1
-    constexpr auto collect(R&& r) {
-        using range_value = std::ranges::range_value_t<R>;
-        return collect<Container<typename range_value::value_type>>(std::forward<R>(r));
+              std::ranges::input_range R, typename... Args>
+        requires detail::potential_type<std::ranges::range_value_t<R>>
+    [[nodiscard]] constexpr 
+    auto collect(R&& r, Args&&... args) {
+        using exp_value = typename std::ranges::range_value_t<R>::value_type;
+        return collect<Container<exp_value>>(std::forward<R>(r), std::forward<Args>(args)...);
     }
 }  // namespace ranges
 
 namespace detail {
-    template<template <typename...> class Container = std::vector>
-    struct collect_fn_tplt : std::ranges::range_adaptor_closure<collect_fn_tplt<Container>> {
+
+    template<template <typename...> class Container = std::vector,
+             class... Args>
+    struct collect_fn_tplt : std::ranges::range_adaptor_closure<collect_fn_tplt<Container, Args...>> {
+        std::tuple<Args...> args;
+
         template <std::ranges::input_range R>
-        constexpr auto operator()(R&& range) {
-            return ranges::collect<Container>(std::forward<R>(range));
+        [[nodiscard]] constexpr 
+        auto operator()(R&& range) {
+            auto apply_collect = [&range]
+                <class... Args>(Args &&... inner_args) {
+                return ranges::collect<Container>(
+                    std::forward<R>(range),
+                    std::forward<Args>(inner_args)...);
+            };
+            return std::apply(apply_collect, args);
         }
     };
 
-    template <std::ranges::input_range Container>
-    struct collect_fn_cont: std::ranges::range_adaptor_closure<collect_fn_cont<Container>> {
+    template <std::ranges::input_range Container, class... Args>
+    struct collect_fn_cont: std::ranges::range_adaptor_closure<collect_fn_cont<Container, Args...>> {
+        std::tuple<Args...> args;
+
         template <std::ranges::input_range R>
-        constexpr auto operator()(R&& range) {
-            return ranges::collect<Container>(std::forward<R>(range));
+        [[nodiscard]] constexpr 
+        // maybe use deducing this do decide either copy or move args
+        auto operator()(R&& range) {
+            auto apply_collect = [&range]
+                <class... Args>(Args &&... inner_args) {
+                return ranges::collect<Container>(
+                    std::forward<R>(range),
+                    std::forward<Args>(inner_args)...);
+            };
+            return std::apply(apply_collect, args);
         }
     };
 }  // namespace detail
@@ -283,10 +281,16 @@ namespace ranges {
     /// container (currently only works with std::vector) or in the error case, the
     /// first error found in the range
     /// </returns>
-    template<template <typename...> class Container = std::vector>
-    constexpr inline auto collect() -> detail::collect_fn_tplt<Container> { return {}; }
-
-    template <std::ranges::input_range Container>
-    constexpr auto collect() -> detail::collect_fn_cont<Container>{ return {}; };
+    template<template <typename...> class Container = std::vector, typename... Args>
+    [[nodiscard]] constexpr inline 
+    auto collect(Args&&... args) -> detail::collect_fn_tplt<Container, Args...> {
+        return { .args {std::forward<Args>(args)...} };
+    }
+    
+    template <std::ranges::input_range Container, typename... Args>
+    [[nodiscard]] constexpr inline 
+    auto collect(Args&&... args) -> detail::collect_fn_cont<Container, Args...>{
+        return { .args {std::forward<Args>(args)...} };
+    };
     
 }  // namespace ranges
