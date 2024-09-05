@@ -212,13 +212,12 @@ namespace ranges {
     requires 
         (!std::ranges::view<Container>) // ensure Container is container and not view
         && detail::potential_type<std::ranges::range_value_t<R>>
-        && (std::same_as<
+        && (std::convertible_to<
             std::ranges::range_value_t<Container>,
             typename std::ranges::range_value_t<R>::value_type>)
     [[nodiscard]] constexpr return_type collect(R&& range, Args&&... args)
     {
         // two pass construction case : first check then construct
-        //TODO maybe split two construction cases for visibility
         if constexpr (std::ranges::forward_range<R>)
         {
             // check if error on first pass

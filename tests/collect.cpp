@@ -251,43 +251,43 @@ TEST_CASE("no construction on forward_range error") {
     //}
 }
 
+TEST_CASE("conversion test") {
+    VecOfExp no_error = {
+        1, 2, 3 };
 
-
-// -------------- CASES NOT WORKING FTM --------------
-//TEST_CASE("conversion test") {
-//    VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
-//
-//    // should allow conversion? 
-//    auto exp_error = has_error | ranges::collect<std::vector<float>>();
-//
-//}
-
-
-#include <memory_resource>
-#include <functional>
-#include <array>
-TEST_CASE("allocator") {
-    VecOfExp no_error = { 1, 2, 3 };
-    char buffer[256];
-    std::pmr::monotonic_buffer_resource res(std::begin(buffer), std::size(buffer));
-
-    using exp_generator = std::function<
-        std::expected<std::pmr::vector<int>, std::string>(void)>;
-    std::vector<exp_generator> construct_exps {
-        [&] {return ranges::collect<std::pmr::vector<int>>(no_error, &res); },
-        [&] {return no_error | ranges::collect<std::pmr::vector<int>>(&res); },
-        // those are not permitted by std::ranges::to. Probably shouldnt be alloewd here aswell
-        [&] {return no_error | ranges::collect<std::pmr::vector>(&res); },
-        [&] {return ranges::collect<std::pmr::vector>(no_error, &res); },
-    };
-
-    for (auto&& exp_generator : construct_exps)
-    {
-        auto exp = exp_generator();
-        REQUIRE(exp.has_value());
-        REQUIRE(exp->get_allocator().resource()->is_equal(res));
-    }
+    auto test = no_error | ranges::collect<std::vector<float>>();
+    REQUIRE(std::same_as<decltype(test), std::expected<std::vector<float>, std::string>>);
+    REQUIRE(test.has_value());
+    REQUIRE(test.value() == std::vector<float>{1, 2, 3});
 }
+// -------------- CASES NOT WORKING FTM --------------
+
+//
+//#include <memory_resource>
+//#include <functional>
+//#include <array>
+//TEST_CASE("allocator") {
+//    VecOfExp no_error = { 1, 2, 3 };
+//    char buffer[256];
+//    std::pmr::monotonic_buffer_resource res(std::begin(buffer), std::size(buffer));
+//
+//    using exp_generator = std::function<
+//        std::expected<std::pmr::vector<int>, std::string>(void)>;
+//    std::vector<exp_generator> construct_exps {
+//        [&] {return ranges::collect<std::pmr::vector<int>>(no_error, &res); },
+//        [&] {return no_error | ranges::collect<std::pmr::vector<int>>(&res); },
+//        // those are not permitted by std::ranges::to. Probably shouldnt be alloewd here aswell
+//        [&] {return no_error | ranges::collect<std::pmr::vector>(&res); },
+//        [&] {return ranges::collect<std::pmr::vector>(no_error, &res); },
+//    };
+//
+//    for (auto&& exp_generator : construct_exps)
+//    {
+//        auto exp = exp_generator();
+//        REQUIRE(exp.has_value());
+//        REQUIRE(exp->get_allocator().resource()->is_equal(res));
+//    }
+//}
 
 //NESTED WIP
 //TEST_CASE("acts like ranges::to if no potential underneath") {
