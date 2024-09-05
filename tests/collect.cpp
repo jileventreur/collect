@@ -5,7 +5,6 @@
 #include <list>
 #include <string>
 
-
 using VecOfExp = std::vector<std::expected<int, std::string>>;
 using ExpOfVec = std::expected<std::vector<int>, std::string>;
 
@@ -68,6 +67,34 @@ TEST_CASE("to list") {
 
     REQUIRE(exp_error == std::unexpected("NOT INT"));
     REQUIRE(exp_value == ExpOfLst(std::list<int>{1, 2, 3}));
+}
+
+TEST_CASE("to string") {
+    std::vector<std::optional<char>> vec{ 'h', 'e', 'l', 'l', 'o' };;
+
+    std::same_as <std::optional<std::string>> auto opt = vec | ranges::collect<std::string>();
+    REQUIRE(opt.has_value());
+    REQUIRE(*opt == std::string("hello"));
+}
+
+TEST_CASE("one pass to list") {
+    using ExpOfLst = std::expected<std::list<int>, std::string>;
+    VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
+    VecOfExp no_error = { 1, 2, 3 };
+
+    std::same_as<ExpOfLst> auto exp_error = detail::collect_one_pass<std::list<int>>(has_error);
+    std::same_as<ExpOfLst> auto exp_value = detail::collect_one_pass<std::list<int>>(no_error);
+
+    REQUIRE(exp_error == std::unexpected("NOT INT"));
+    REQUIRE(exp_value == ExpOfLst(std::list<int>{1, 2, 3}));
+}
+
+TEST_CASE("one pass to string") {
+    std::vector<std::optional<char>> vec{ 'h', 'e', 'l', 'l', 'o' };;
+
+    std::same_as <std::optional<std::string>> auto opt = detail::collect_one_pass<std::string>(vec);
+    REQUIRE(opt.has_value());
+    REQUIRE(*opt == std::string("hello"));
 }
 
 template<class Value>
@@ -189,37 +216,52 @@ struct fake_vector {
 };
 static_assert(detail::reservable<fake_vector<int>, VecOfExp>);
 
-//todo impl it with input_range
-//TEST_CASE("calls reserve on input range") {
-//    VecOfExp no_error = { 1, 2, 3 };
-//    auto fake_vec = (no_error | ranges::collect<fake_vector>()).value();
-//    REQUIRE(fake_vec.reserve_called);
-//    REQUIRE(fake_vec.reserved == no_error.size());
-//
-//    auto fake_vec2 = *(no_error 
-//        // convert to not sized tange
-//        | std::views::take_while([](auto&&) { return true; }) 
-//        | ranges::collect<fake_vector>());
-//    REQUIRE(fake_vec2.reserve_called == false);
-//}
+TEST_CASE("calls reserve one pass") {
+    VecOfExp no_error = { 1, 2, 3 };
+    auto fake_vec = (detail::collect_one_pass<fake_vector<int>>(no_error)).value();
+    REQUIRE(fake_vec.reserve_called);
+    REQUIRE(fake_vec.reserved == no_error.size());
+
+    auto not_sized_view = no_error
+        | std::views::take_while([](auto&&) { return true; });
+    auto fake_vec2 = *(detail::collect_one_pass<fake_vector<int>>(not_sized_view));
+    REQUIRE(fake_vec2.reserve_called == false);
+}
 
 TEST_CASE("no construction on forward_range error") {
-    fake_vector<int>::contructed_count = 0;
     VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
-
-    auto exp_error = has_error | ranges::collect();
-
-    REQUIRE(fake_vector<int>::contructed_count == 0);
-
-    fake_vector<int>::contructed_count = 0;
-
-    //todo test on input_range
-    //auto test = std::views::iota(0) 
-    //    | std::views::transform([&](auto i) { return has_error[i];});
-    // i need a weakly_incrementable only type in iota to get input_range
-    //static_assert(std::ranges::random_access_range<decltype(test)>);
-    //REQUIRE(fake_vector<int>::contructed_count == 1);
+    {
+        fake_vector<int>::contructed_count = 0;
+        auto exp_error = has_error | ranges::collect<fake_vector<int>>();
+        REQUIRE(fake_vector<int>::contructed_count == 0);
+    }
+    {
+        fake_vector<int>::contructed_count = 0;
+        auto exp_error = detail::collect_one_pass<fake_vector<int>>(has_error);
+        REQUIRE(fake_vector<int>::contructed_count == 1);
+    }
+    //{
+        //fake_vector<int>::contructed_count = 0;
+        //todo test on input_range
+        //auto test = std::views::iota(0) 
+        //    | std::views::transform([&](auto i) { return has_error[i];});
+        // i need a weakly_incrementable only type in iota to get input_range
+        //static_assert(std::ranges::random_access_range<decltype(test)>);
+        //REQUIRE(fake_vector<int>::contructed_count == 1);
+    //}
 }
+
+
+
+// -------------- CASES NOT WORKING FTM --------------
+//TEST_CASE("conversion test") {
+//    VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
+//
+//    // should allow conversion? 
+//    auto exp_error = has_error | ranges::collect<std::vector<float>>();
+//
+//}
+
 
 #include <memory_resource>
 #include <functional>
@@ -233,9 +275,10 @@ TEST_CASE("allocator") {
         std::expected<std::pmr::vector<int>, std::string>(void)>;
     std::vector<exp_generator> construct_exps {
         [&] {return ranges::collect<std::pmr::vector<int>>(no_error, &res); },
-        [&] {return ranges::collect<std::pmr::vector>(no_error, &res); },
-        [&] {return no_error | ranges::collect<std::pmr::vector>(&res); },
         [&] {return no_error | ranges::collect<std::pmr::vector<int>>(&res); },
+        // those are not permitted by std::ranges::to. Probably shouldnt be alloewd here aswell
+        [&] {return no_error | ranges::collect<std::pmr::vector>(&res); },
+        [&] {return ranges::collect<std::pmr::vector>(no_error, &res); },
     };
 
     for (auto&& exp_generator : construct_exps)
@@ -276,6 +319,7 @@ TEST_CASE("allocator") {
 ////  * deduce return type OK
 ////  * test with optional custom OK
 ////  * test with expected custom OK
+//// allow range value conversion if possible
 //// work with associative types (Maybe OK but need tests)
 //// custom allocator and following args OK
 //// constexpr tests
@@ -322,3 +366,4 @@ TEST_CASE("allocator") {
 ////  -> not much addition for those custom types and more general :  good thing imo
 //// enable nested? if multiple nested expected/optional layers, return only the expected of the first or do them all when possible? 
 //// What about cv_ref range value types? 
+//// Is std::vector default a good things ? 

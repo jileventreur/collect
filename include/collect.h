@@ -147,6 +147,7 @@ namespace detail {
 
 }  // namespace detail
 
+
 namespace ranges {
 
     template <typename Container, class Input>
@@ -156,6 +157,42 @@ namespace ranges {
 
     template <typename Container, class Input, typename... Args>
     using collect_return_t = collect_return<Container, Input>::type;
+}
+
+
+namespace detail{
+    template <std::ranges::input_range Container,
+        std::ranges::input_range R, typename... Args,
+        class return_type = ranges::collect_return_t<Container, std::ranges::range_value_t<R>>>
+        requires
+    (!std::ranges::view<Container>) // ensure Container is container and not view
+        && detail::potential_type<std::ranges::range_value_t<R>>
+        && (std::same_as<
+            std::ranges::range_value_t<Container>,
+            typename std::ranges::range_value_t<R>::value_type>)
+        [[nodiscard]] constexpr return_type collect_one_pass(R&& range, Args&&... args)
+    {
+        if constexpr (std::constructible_from<Container, Args...> == false)
+        {
+            static_assert(detail::always_false<Container>,
+                "Container is not constructible from args...");
+        }
+        Container success(std::forward<Args>(args)...);
+        if constexpr (detail::reservable<Container, R>)
+        {
+            success.reserve(std::ranges::size(range));
+        }
+        auto inserter = std::inserter(success, std::end(success));
+        for (auto&& potential_value : range) {
+            if (potential_value.has_value() == false)
+                return return_type(detail::construct_error<return_type>(std::move(potential_value)));
+            *inserter = std::move(potential_value.value());
+        }
+        return return_type(std::move(success));
+    }
+}
+
+namespace ranges {
 
     /// <summary>
     /// Take a range of std::expected[value, error] like types and returns an
@@ -171,18 +208,15 @@ namespace ranges {
     ///  - edit collect_return_type to return std::ranges::to type if no potential underneath
     template <std::ranges::input_range Container,
               std::ranges::input_range R, typename... Args,
-              class RetType = collect_return_t<Container, std::ranges::range_value_t<R>>>
+              class return_type = collect_return_t<Container, std::ranges::range_value_t<R>>>
     requires 
         (!std::ranges::view<Container>) // ensure Container is container and not view
         && detail::potential_type<std::ranges::range_value_t<R>>
         && (std::same_as<
             std::ranges::range_value_t<Container>,
             typename std::ranges::range_value_t<R>::value_type>)
-    [[nodiscard]] constexpr RetType collect(R&& range, Args&&... args) 
+    [[nodiscard]] constexpr return_type collect(R&& range, Args&&... args)
     {
-        using value_type = typename std::ranges::range_value_t<R>::value_type;
-        using return_type = collect_return_t<Container, std::ranges::range_value_t<R>>;
-
         // two pass construction case : first check then construct
         //TODO maybe split two construction cases for visibility
         if constexpr (std::ranges::forward_range<R>)
@@ -199,23 +233,7 @@ namespace ranges {
         }
         // one pass construction case : check and fill on the fly
         else if (detail::insertable<Container>) {
-            if constexpr (std::constructible_from<Container, Args...> == false)
-            {
-                static_assert(detail::always_false<Container>, 
-                    "Container is not constructible from args...");
-            }
-            Container success(std::forward<Args>(args)... );
-            if constexpr (detail::reservable<Container, R>)
-            {
-                success.reserve(std::ranges::size(range));
-            }
-            auto inserter = std::inserter(success, std::end(success));
-            for (auto&& potential_value : range) {
-                if (potential_value.has_value() == false)
-                    return return_type(detail::construct_error<return_type>(std::move(potential_value)));
-                *inserter = std::move(potential_value.value());
-            }
-            return return_type(std::move(success));
+            detail::collect_one_pass<Container>(range, std::forward<Args>(args)...);
         }
         else {
             static_assert(detail::always_false<Container>, "Container is not insertable");
