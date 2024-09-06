@@ -4,9 +4,8 @@ An implementation of rust [collect][1] for c++23
 
 ## Principle
 
-The function `ranges::collect` is usefull tool when working with `std::ranges` of `std::expected` or `std::optional`.
-Calling `ranges::collect` will get you all the values from potential type if all are valid or the potential error if one fails
-
+The `ranges::collect` function is a useful tool when working with `std::ranges` containing types such as `std::expected` or `std::optional`.
+Calling `ranges::collect` will give you all the values of the potential type if they are all valid, or the potential error if one of them fails.
 In other words:
 
 * It converts a `range<expected<value, error>>` into an `expected<range<value>, error>`
