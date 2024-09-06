@@ -14,7 +14,7 @@ In other words:
 
 ## Basic Example 
 
-```
+```cpp
 using VecOfExp = std::vector<std::expected<int, std::string>>;
 using ExpOfVec = std::expected<std::vector<int>, std::string>;
 VecOfExp has_error = { 1, std::unexpected("NOT INT"), 3};
@@ -63,19 +63,19 @@ If you want to run the tests, you'll need CMake version .14 or higher.
 For Example:
 
 * You can specify the container return type:
-```
+```cpp
 std::vector<std::optinal<int>> vec = { 1, std::nullopt, 3};
 std::optional<std::list<int>> exp_error = vec | ranges::collect<std::list<int>>();
 ```
 
 *  Value of the returned container can be deduced :
-```
+```cpp
 std::vector<std::optinal<int>> vec = { 1, std::nullopt, 3};
 std::optional<std::list<int>> exp_error = vec | ranges::collect<std::list>();
 ```
 
 * You can provide the returned container args if needed :
-```
+```cpp
 std::vector<std::optinal<int>> vec = { 1, std::nullopt, 3};
 std::pmr::monotonic_buffer_resource buffer(std::begin(buffer), std::size(buffer));
 std::optional<std::pmr::vector<int>> res = vec | ranges::collect<std::pmr::vector<int>>(&buffer);
