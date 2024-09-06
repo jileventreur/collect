@@ -76,7 +76,7 @@ std::optional<std::list<int>> exp_error = vec | ranges::collect<std::list>();
 * You can provide the returned container args if needed :
 ```cpp
 std::vector<std::optional<int>> vec = { 1, std::nullopt, 3};
-std::pmr::monotonic_buffer_resource buffer(std::begin(buffer), std::size(buffer));
+std::pmr::monotonic_buffer_resource buffer {/* ...*/};
 std::optional<std::pmr::vector<int>> res = vec | ranges::collect<std::pmr::vector<int>>(&buffer);
 ```
 * Works with any input range and custom container for the output
