@@ -105,6 +105,9 @@ To enhance performance `ranges::collect` will only allocate if all the value are
 For `std::input_range`, result values are allocated on the fly and destroyed if an error is encountered in the range values.
 
 
+---
+
+*Special thanks to Sy Brand and his `std::ranges::to` implementation [video][7], which taught me a lot about how to implement this project.*
 
   [1]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.collect
   [2]: https://github.com/jileventreur/collect/blob/master/include/collect.h
@@ -112,3 +115,4 @@ For `std::input_range`, result values are allocated on the fly and destroyed if 
   [4]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.collect
   [5]: https://ericniebler.github.io/range-v3/structranges_1_1views_1_1cache1__fn.html
   [6]: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p3138r0.html
+  [7]: https://www.youtube.com/watch?v=lU403RAZV0I

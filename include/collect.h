@@ -189,7 +189,7 @@ template <std::ranges::input_range Container,
     }
     return return_type(std::move(success));
 }
-}
+}// namespace detail
 
 namespace ranges {
 
@@ -202,7 +202,6 @@ namespace ranges {
     /// container (currently only works with std::vector) or in the error case, the
     /// first error found in the range
     /// </returns>
-
     template <std::ranges::input_range Container,
               std::ranges::input_range R, typename... Args,
               class return_type = collect_return_t<Container, std::ranges::range_value_t<R>>>
