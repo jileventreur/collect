@@ -217,6 +217,7 @@ struct fake_vector {
     auto insert(auto &&... args) { return vec.insert(args...); }
 };
 static_assert(detail::reservable<fake_vector<int>, VecOfExp>);
+static_assert(detail::insertable<fake_vector<int>>);
 
 TEST_CASE("calls reserve one pass") {
     VecOfExp no_error = { 1, 2, 3 };
@@ -230,7 +231,20 @@ TEST_CASE("calls reserve one pass") {
     REQUIRE(fake_vec2.reserve_called == false);
 }
 
-TEST_CASE("no construction on forward_range error") {
+
+struct WeakInt
+{
+    using difference_type = int;
+    int i = 0;
+    WeakInt() = default;
+    explicit WeakInt(int j) : i(j) {}
+    WeakInt& operator++() { ++i; CHECK(i <= 10); return *this; }
+    WeakInt operator++(int) { auto tmp = *this; ++*this; return tmp; }
+};
+static_assert(std::weakly_incrementable<WeakInt>);
+static_assert(!std::incrementable<WeakInt>);
+
+TEST_CASE("result type not constructed if forward_range and contains error") {
     VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
     {
         fake_vector<int>::contructed_count = 0;
@@ -242,25 +256,23 @@ TEST_CASE("no construction on forward_range error") {
         auto exp_error = detail::collect_one_pass<fake_vector<int>>(has_error);
         REQUIRE(fake_vector<int>::contructed_count == 1);
     }
-    //{
-        //fake_vector<int>::contructed_count = 0;
-        //todo test on input_range
-        //auto test = std::views::iota(0) 
-        //    | std::views::transform([&](auto i) { return has_error[i];});
-        // i need a weakly_incrementable only type in iota to get input_range
-        //static_assert(std::ranges::random_access_range<decltype(test)>);
-        //REQUIRE(fake_vector<int>::contructed_count == 1);
-    //}
+    {
+        fake_vector<int>::contructed_count = 0;
+        auto input_range = std::views::iota(WeakInt{0})
+            | std::views::transform([&](auto wk) { return has_error[wk.i];});
+        auto exp_error = input_range | ranges::collect<fake_vector<int>>();
+        REQUIRE(fake_vector<int>::contructed_count == 1);
+    }
 }
 
-//TEST_CASE("conversion test") {
-//    VecOfExp no_error = { 1, 2, 3 };
-//
-//    auto test = no_error | ranges::collect<std::vector<float>>();
-//    REQUIRE(std::same_as<decltype(test), std::expected<std::vector<float>, std::string>>);
-//    REQUIRE(test.has_value());
-//    REQUIRE(test.value() == std::vector<float>{1, 2, 3});
-//}
+TEST_CASE("conversion test") {
+    VecOfExp no_error = { 1, 2, 3 };
+#pragma warning(suppress: 4244)
+    auto test = no_error | ranges::collect<std::vector<float>>();
+    REQUIRE(std::same_as<decltype(test), std::expected<std::vector<float>, std::string>>);
+    REQUIRE(test.has_value());
+    REQUIRE(test.value() == std::vector<float>{1, 2, 3});
+}
 
 #include <memory_resource>
 #include <functional>
@@ -349,7 +361,7 @@ TEST_CASE("constexpr test") {
 //// for reservable container + sized range reserve before filling OK
 //// impl for multiple containers OK
 //// for forward_range check first then fill result OK
-////  -> check input_ranges pass
+////  -> check input_ranges pass OK
 //// impl for optional/potential-like : OK
 ////  * be able to construct error return type for both case OK
 ////  * deduce return type OK
@@ -359,6 +371,11 @@ TEST_CASE("constexpr test") {
 //// work with associative types (Maybe OK but need tests)
 //// custom allocator and following args OK
 //// constexpr tests OK
+//// FUTURE BRANCH
+//// 1) Potentially acts like ranges::to :
+////    - check that dimensionality of Container and input range R match
+////    - edit collect_return_type to return std::ranges::to type if value is not a potential type
+//// 2) Works with nested containers
 //// ----------------------------------------------------------------------
 //// Nested containers notes : 
 ////  * enable nested containers ?
