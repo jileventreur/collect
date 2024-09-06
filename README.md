@@ -88,7 +88,7 @@ std::optional<std::pmr::vector<int>> res = vec | ranges::collect<std::pmr::vecto
 use of standard expected or optional is not mandatory and you can use any type following their behavior as input. The same type wille be used as output to encapsulate the returned container.
 So you can use any custom implementation like [tl::expected][2] or [tl::optional][3]
 
-If you want to use your own personal implementation your type have to follows concept `expected_like` or `optional_like` provided in the collect.h header file
+If you wish to use your own implementation, your type must follow the expected_like or optional_like concepts provided in the collect.h header file.
 
 ## Limitations
 
