@@ -35,27 +35,21 @@ TEST_CASE("basic optional") {
     REQUIRE(opt_value == OptOfVec(std::vector<int>{1, 2, 3}));
 }
 
-constexpr void as_ranges_to_if_no_potential()
+constexpr bool as_ranges_to_if_no_potential()
 {
     std::vector vec{ 1, 2, 3 };
 
-    using generator = std::function<std::list<int>(void)>;
-    std::vector<generator> generators{
-        [&] { return ranges::collect<std::list<int>>(vec); },
-        [&] { return vec | ranges::collect<std::list<int>>(); },
-        [&] { return vec | ranges::collect<std::list>(); },
-        [&] { return ranges::collect<std::list>(vec); },
-    };
-    for (auto& generator : generators)
-    {
-        auto res = generator();
-        REQUIRE(res == std::list{ 1, 2, 3 });
-    }
+    auto res = std::vector{ 1, 2, 3 };
+    auto test1 = ranges::collect<std::vector<int>>(vec) == res;
+    auto test2 = (vec | ranges::collect<std::vector<int>>()) == res;
+    auto test3 = (vec | ranges::collect<std::vector>()) == res;
+    auto test4 = ranges::collect<std::vector>(vec) == res;
+    return test1 && test2 && test3 && test4;
 }
 
 #include <functional>
 TEST_CASE("as ranges::to if no potential_type") {
-    as_ranges_to_if_no_potential();
+    REQUIRE(as_ranges_to_if_no_potential());
 }
 
 TEST_CASE("partially specify vector") {
@@ -366,12 +360,20 @@ constexpr bool one_pass_basic_test() {
         && exp_value == ExpOfVec(std::vector<int>{1, 2, 3});
 }
 
+consteval bool test()
+{
+    as_ranges_to_if_no_potential();
+    return true;
+}
+
+static constexpr auto res = test();
+
 #include "constexpr_test.h"
 TEST_CASE("constexpr test") {
 
     REQUIRE(constexpr_test<decltype([] { return basic_test(); })>());
     REQUIRE(constexpr_test<decltype([] { return one_pass_basic_test(); })>());
-    constexpr_test<decltype([] { as_ranges_to_if_no_potential(); })>();
+    REQUIRE(constexpr_test<decltype([] { return as_ranges_to_if_no_potential(); })>());
 }
 
 
