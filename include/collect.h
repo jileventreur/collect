@@ -1,3 +1,4 @@
+#include <vector>
 #include <ranges>
 #include <algorithm>
 #include <vector>
@@ -18,7 +19,7 @@ namespace detail {
 
     template <typename T>
     struct get_template_args_size {
-        static_assert(always_false<T>, "T is not a templated type");
+        static_assert(false, "T is not a templated type");
     };
 
     template <template <class...> class T, class... Args>
@@ -31,7 +32,7 @@ namespace detail {
 
     template <typename T, size_t N>
     struct get_template_n_arg_type {
-        static_assert(always_false<T>, "T is not a templated type");
+        static_assert(false, "T is not a templated type");
     };
 
     template <template <class...> class T, class... Args, size_t N>
@@ -44,19 +45,19 @@ namespace detail {
 
     /// Need to check is_template + one template arg + template<T>::value_type = T
     template <typename T>
-    concept optional_like = 
+    concept optional_like =
         requires(T c) {
         typename T::value_type;
         { c.has_value() } -> std::same_as<bool>;
         { c.value() };
     }
     && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
-    && std::default_initializable<T>
-    && T{}.has_value() == false // error case can be construct thanks to default constructor
-    && is_template_type_v<T>
-    && get_template_args_size_v<T> >= 1
-    && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
-    && std::constructible_from<T, typename T::value_type>;
+        && std::default_initializable<T>
+        && T{}.has_value() == false // error case can be construct thanks to default constructor
+        && is_template_type_v<T>
+        && get_template_args_size_v<T> >= 1
+        && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
+        && std::constructible_from<T, typename T::value_type>;
 
     template <typename T>
     concept expected_like = requires(T c) {
@@ -68,14 +69,14 @@ namespace detail {
         { c.error() };
     }
     && std::constructible_from<typename T::unexpected_type, typename T::error_type>
-    && std::constructible_from<T, typename T::unexpected_type>
-    && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
-    && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().error())>, typename T::error_type>
-    && is_template_type_v<T>
-    && get_template_args_size_v<T> >= 2
-    && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
-    && std::same_as<get_template_n_arg_type_t<T, 1>, typename T::error_type>
-    ;
+        && std::constructible_from<T, typename T::unexpected_type>
+        && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
+        && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().error())>, typename T::error_type>
+        && is_template_type_v<T>
+        && get_template_args_size_v<T> >= 2
+        && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
+        && std::same_as<get_template_n_arg_type_t<T, 1>, typename T::error_type>
+        ;
 
     template <typename T>
     concept potential_type = optional_like<T> || expected_like<T>;
@@ -160,35 +161,35 @@ namespace ranges {
 }
 
 
-namespace detail{
-template <std::ranges::input_range Container,
-    std::ranges::input_range R, typename... Args,
-    class return_type = ranges::collect_return_t<Container, std::ranges::range_value_t<R>>>
+namespace detail {
+    template <std::ranges::input_range Container,
+        std::ranges::input_range R, typename... Args,
+        class return_type = ranges::collect_return_t<Container, std::ranges::range_value_t<R>>>
 #ifndef TESTS
-    requires
-(!std::ranges::view<Container>) // ensure Container is container and not view
-    && detail::potential_type<std::ranges::range_value_t<R>>
-    && (std::same_as<
-        std::ranges::range_value_t<Container>,
-        typename std::ranges::range_value_t<R>::value_type>)
+        requires
+    (!std::ranges::view<Container>) // ensure Container is container and not view
+        && detail::potential_type<std::ranges::range_value_t<R>>
+        && (std::same_as<
+            std::ranges::range_value_t<Container>,
+            typename std::ranges::range_value_t<R>::value_type>)
 #endif
-[[nodiscard]] constexpr return_type collect_one_pass(R&& range, Args&&... args)
-{
-    static_assert(std::constructible_from<Container, Args...>,
-        "Container is not constructible from args...");
-    Container success(std::forward<Args>(args)...);
-    if constexpr (detail::reservable<Container, R>)
+        [[nodiscard]] constexpr return_type collect_one_pass(R&& range, Args&&... args)
     {
-        success.reserve(std::ranges::size(range));
+        static_assert(std::constructible_from<Container, Args...>,
+            "Container is not constructible from args...");
+        Container success(std::forward<Args>(args)...);
+        if constexpr (detail::reservable<Container, R>)
+        {
+            success.reserve(std::ranges::size(range));
+        }
+        auto inserter = std::inserter(success, std::end(success));
+        for (auto&& potential_value : range) {
+            if (potential_value.has_value() == false)
+                return return_type(detail::construct_error<return_type>(std::move(potential_value)));
+            *inserter = std::move(potential_value.value());
+        }
+        return return_type(std::move(success));
     }
-    auto inserter = std::inserter(success, std::end(success));
-    for (auto&& potential_value : range) {
-        if (potential_value.has_value() == false)
-            return return_type(detail::construct_error<return_type>(std::move(potential_value)));
-        *inserter = std::move(potential_value.value());
-    }
-    return return_type(std::move(success));
-}
 }// namespace detail
 
 namespace ranges {
@@ -203,15 +204,15 @@ namespace ranges {
     /// first error found in the range
     /// </returns>
     template <std::ranges::input_range Container,
-              std::ranges::input_range R, typename... Args,
-              class return_type = collect_return_t<Container, std::ranges::range_value_t<R>>>
-    requires 
-        (!std::ranges::view<Container>) // ensure Container is container and not view
+        std::ranges::input_range R, typename... Args,
+        class return_type = collect_return_t<Container, std::ranges::range_value_t<R>>>
+        requires
+    (!std::ranges::view<Container>) // ensure Container is container and not view
         && detail::potential_type<std::ranges::range_value_t<R>>
         && (std::convertible_to<
             std::ranges::range_value_t<Container>,
             typename std::ranges::range_value_t<R>::value_type>)
-    [[nodiscard]] constexpr return_type collect(R&& range, Args&&... args)
+        [[nodiscard]] constexpr return_type collect(R&& range, Args&&... args)
     {
         // two pass construction case : first check then construct
         if constexpr (std::ranges::forward_range<R>)
@@ -222,7 +223,7 @@ namespace ranges {
                     return return_type(detail::construct_error<return_type>(std::move(potential_value)));
             }
             //construct from transform
-            auto transform_view = range 
+            auto transform_view = range
                 | std::views::transform([](auto&& exp) { return exp.value(); });
             return return_type(transform_view | std::ranges::to<Container>(std::forward<Args>(args)...));
         }
@@ -232,10 +233,10 @@ namespace ranges {
     }
 
     template <template <typename...> typename Container = std::vector,
-              std::ranges::input_range R, typename... Args>
+        std::ranges::input_range R, typename... Args>
         requires detail::potential_type<std::ranges::range_value_t<R>>
-    [[nodiscard]] constexpr 
-    auto collect(R&& r, Args&&... args) {
+    [[nodiscard]] constexpr
+        auto collect(R&& r, Args&&... args) {
         using exp_value = typename std::ranges::range_value_t<R>::value_type;
         return collect<Container<exp_value>>(std::forward<R>(r), std::forward<Args>(args)...);
     }
@@ -244,36 +245,36 @@ namespace ranges {
 namespace detail {
 
     template<template <typename...> class Container = std::vector,
-             class... Args>
+        class... Args>
     struct collect_fn_tplt : std::ranges::range_adaptor_closure<collect_fn_tplt<Container, Args...>> {
         std::tuple<Args...> args;
 
         template <std::ranges::input_range R>
-        [[nodiscard]] constexpr 
-        auto operator()(R&& range) {
+        [[nodiscard]] constexpr
+            auto operator()(R&& range) {
             auto apply_collect = [&range]
-                <class... Args>(Args &&... inner_args) {
+                <class... As>(As &&... inner_args) {
                 return ranges::collect<Container>(
                     std::forward<R>(range),
-                    std::forward<Args>(inner_args)...);
+                    std::forward<As>(inner_args)...);
             };
             return std::apply(apply_collect, args);
         }
     };
 
     template <std::ranges::input_range Container, class... Args>
-    struct collect_fn_cont: std::ranges::range_adaptor_closure<collect_fn_cont<Container, Args...>> {
+    struct collect_fn_cont : std::ranges::range_adaptor_closure<collect_fn_cont<Container, Args...>> {
         std::tuple<Args...> args;
 
         template <std::ranges::input_range R>
-        [[nodiscard]] constexpr 
-        // maybe use deducing this do decide either copy or move args
-        auto operator()(R&& range) {
+        [[nodiscard]] constexpr
+            // maybe use deducing this do decide either copy or move args
+            auto operator()(R&& range) {
             auto apply_collect = [&range]
-                <class... Args>(Args &&... inner_args) {
+                <class... As>(As &&... inner_args) {
                 return ranges::collect<Container>(
                     std::forward<R>(range),
-                    std::forward<Args>(inner_args)...);
+                    std::forward<As>(inner_args)...);
             };
             return std::apply(apply_collect, args);
         }
@@ -291,15 +292,15 @@ namespace ranges {
     /// first error found in the range
     /// </returns>
     template<template <typename...> class Container = std::vector, typename... Args>
-    [[nodiscard]] constexpr inline 
-    auto collect(Args&&... args) -> detail::collect_fn_tplt<Container, Args...> {
+    [[nodiscard]] constexpr inline
+        auto collect(Args&&... args) -> detail::collect_fn_tplt<Container, Args...> {
         return { .args {std::forward<Args>(args)...} };
     }
-    
+
     template <std::ranges::input_range Container, typename... Args>
-    [[nodiscard]] constexpr inline 
-    auto collect(Args&&... args) -> detail::collect_fn_cont<Container, Args...>{
+    [[nodiscard]] constexpr inline
+        auto collect(Args&&... args) -> detail::collect_fn_cont<Container, Args...> {
         return { .args {std::forward<Args>(args)...} };
     };
-    
+
 }  // namespace ranges
