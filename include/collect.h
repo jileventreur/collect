@@ -49,15 +49,18 @@ namespace detail {
         requires(T c) {
         typename T::value_type;
         { c.has_value() } -> std::same_as<bool>;
+        { c.reset() };
         { c.value() };
     }
     && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
-        && std::default_initializable<T>
-        && T{}.has_value() == false // error case can be construct thanks to default constructor
-        && is_template_type_v<T>
-        && get_template_args_size_v<T> >= 1
-        && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
-        && std::constructible_from<T, typename T::value_type>;
+    && std::default_initializable<T>
+    //doest not work if optional underlying type is not constexpr
+    //&& T{}.has_value() == false // error case can be construct thanks to default constructor
+    && is_template_type_v<T>
+    && get_template_args_size_v<T> >= 1
+    && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
+    && std::constructible_from<T, typename T::value_type>
+    ;
 
     template <typename T>
     concept expected_like = requires(T c) {
@@ -69,14 +72,14 @@ namespace detail {
         { c.error() };
     }
     && std::constructible_from<typename T::unexpected_type, typename T::error_type>
-        && std::constructible_from<T, typename T::unexpected_type>
-        && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
-        && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().error())>, typename T::error_type>
-        && is_template_type_v<T>
-        && get_template_args_size_v<T> >= 2
-        && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
-        && std::same_as<get_template_n_arg_type_t<T, 1>, typename T::error_type>
-        ;
+    && std::constructible_from<T, typename T::unexpected_type>
+    && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().value())>, typename T::value_type>
+    && std::same_as<std::remove_cvref_t<decltype(std::declval<T>().error())>, typename T::error_type>
+    && is_template_type_v<T>
+    && get_template_args_size_v<T> >= 2
+    && std::same_as<get_template_n_arg_type_t<T, 0>, typename T::value_type>
+    && std::same_as<get_template_n_arg_type_t<T, 1>, typename T::error_type>
+    ;
 
     template <typename T>
     concept potential_type = optional_like<T> || expected_like<T>;
@@ -102,33 +105,16 @@ namespace detail {
             return ReturnType(typename ReturnType::unexpected_type(value.error()));
         }
         else if constexpr (optional_like<ReturnType>) {
-            return ReturnType{};
+            auto error = ReturnType{};
+            error.reset();
+            return error;
         }
         else
-            static_assert(always_false<T>,
+            static_assert(potential_type<ReturnType> ,
                 "T is neither an expected or optional like type");
     }
 
-    /// nested range collect tools : https://godbolt.org/z/77Wzb8xsK
-    /// TOOL 1 : contains_potential_type_underneath
-    /// Needed for deciding to act like ranges::to if no potential underneah
-    template <typename T>
-    struct contains_potential_type_underneath : std::false_type {};
 
-    template <template <class...> class T, class... Args>
-        requires potential_type<std::ranges::range_value_t<T<Args...>>>
-    struct contains_potential_type_underneath<T<Args...>> : std::true_type {};
-
-    template <template <class...> class T, class... Args>
-        requires std::ranges::range<std::ranges::range_value_t<T<Args...>>> &&
-    (!potential_type<std::ranges::range_value_t<T<Args...>>>)
-        struct contains_potential_type_underneath<T<Args...>>
-        : contains_potential_type_underneath<
-        std::ranges::range_value_t<T<Args...>>> {};
-
-    template <class T>
-    static constexpr bool contains_potential_type_underneath_v =
-        contains_potential_type_underneath<T>::value;
 
     template <typename Container,
         template <typename...> class Exp, class Value, class Error>
@@ -140,11 +126,6 @@ namespace detail {
         requires(optional_like<Opt<Value>>)
     [[maybe_unused]] constexpr auto get_return_type(Opt<Value>) -> Opt<Container>;
 
-
-    ////NESTED WIP
-    //template <template <typename...> typename Container, class RangeValue>
-    //    requires(contains_potential_type_underneath_v<RangeValue> == false)
-    //[[maybe_unused]] constexpr auto get_return_type(RangeValue) -> Container<RangeValue>;
 
 }  // namespace detail
 

@@ -20,8 +20,6 @@ TEST_CASE("basic expected") {
     std::same_as<ExpOfVec> auto exp_error = has_error | ranges::collect();
     std::same_as<ExpOfVec> auto exp_value = ranges::collect(no_error);
     
-    static_assert(detail::contains_potential_type_underneath_v<ExpOfVec> == false);
-
     REQUIRE(exp_error == std::unexpected("NOT INT"));
     REQUIRE(exp_value == ExpOfVec(std::vector<int>{1, 2, 3}));
 }
@@ -79,6 +77,25 @@ TEST_CASE("to string") {
     REQUIRE(*opt == std::string("hello"));
 }
 
+#include <map>
+TEST_CASE("associative") {
+    std::vector vec{
+        std::optional(std::pair<int, int>(0, 1)),
+         std::optional(std::pair<int, int>(2, 3)),
+         std::optional(std::pair<int, int>(4, 5)),
+    };
+    auto res = vec | ranges::collect<std::map<int, int>>();
+    REQUIRE(res.has_value());
+    REQUIRE(res.value() == std::map<int, int>{{0, 1}, { 2,3 }, { 4, 5 }});
+
+    vec.emplace_back();
+    auto err = vec | ranges::collect<std::map<int, int>>();
+    REQUIRE(err.has_value() == false);
+
+    //BUG WITH CTAD TO FIX
+    //auto res = vec | ranges::collect<std::map>();
+}
+
 TEST_CASE("one pass to list") {
     using ExpOfLst = std::expected<std::list<int>, std::string>;
     VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
@@ -104,15 +121,17 @@ struct my_optional {
     //interface
     using value_type = Value;
     constexpr my_optional() = default;
-    constexpr my_optional(Value val) : value_(val), default_init(false) {};
+    constexpr my_optional(Value val) : value_(val), has_value_(true) {};
 
     constexpr value_type value() { return value_; }
-    constexpr bool has_value() { return ! default_init; }
+    constexpr void reset() { has_value_ = false; }
+    constexpr bool has_value() { return has_value_; }
     
     //details
     Value value_ = {};
-    bool default_init = true;
+    bool has_value_ = false;
 };
+static_assert(detail::optional_like<my_optional<int>>);
 
 TEST_CASE("custom optional") {
     {
@@ -163,6 +182,8 @@ struct my_expected{
     Error error_ = {};
     bool error_constructed = false;
 };
+static_assert(detail::expected_like<my_expected<int, int>>);
+
 
 TEST_CASE("custom expected") {
     using Exp = my_expected<int, bool>;
@@ -308,8 +329,6 @@ constexpr bool basic_test(){
     std::same_as<ExpOfVec> auto exp_error = has_error | ranges::collect();
     std::same_as<ExpOfVec> auto exp_value = ranges::collect(no_error);
 
-    static_assert(detail::contains_potential_type_underneath_v<ExpOfVec> == false);
-
     return exp_error == std::unexpected("NOT INT")
      && exp_value == ExpOfVec(std::vector<int>{1, 2, 3});
 }
@@ -321,8 +340,6 @@ constexpr bool one_pass_basic_test() {
     std::same_as<ExpOfVec> auto exp_error = detail::collect_one_pass<std::vector<int>>(has_error);
     std::same_as<ExpOfVec> auto exp_value = detail::collect_one_pass<std::vector<int>>(no_error);
 
-    static_assert(detail::contains_potential_type_underneath_v<ExpOfVec> == false);
-
     return exp_error == std::unexpected("NOT INT")
         && exp_value == ExpOfVec(std::vector<int>{1, 2, 3});
 }
@@ -330,8 +347,8 @@ constexpr bool one_pass_basic_test() {
 #include "constexpr_test.h"
 TEST_CASE("constexpr test") {
 
-    REQUIRE(constexpr_test<decltype([] { return basic_test(); }) > ());
-    REQUIRE(constexpr_test<decltype([] { return one_pass_basic_test(); }) >());
+    REQUIRE(constexpr_test<decltype([] { return basic_test(); })>());
+    REQUIRE(constexpr_test<decltype([] { return one_pass_basic_test(); })>());
 }
 
 
