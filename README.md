@@ -39,6 +39,7 @@ print(exp_value);
 Error : NOT INT
 Valid result : [1, 2, 3]
 ```
+If you want to try it, you can start playing with it [here][2]
 
 ## Requirements
 `ranges::collect` uses `std::ranges::range_adaptor_closure` from the c++23 standard to operate.
@@ -84,10 +85,10 @@ std::optional<std::pmr::vector<int>> res = vec | ranges::collect<std::pmr::vecto
 
 **About `std::expected` and `std::optional`** 
 
-both are not mandatory and you can use any type following their behavior as input. The same type wille be used as output to encapsulate the returned container.
-So use can you custom implementation like [tl::expected][2] or [tl::optional][3]
+use of standard expected or optional is not mandatory and you can use any type following their behavior as input. The same type wille be used as output to encapsulate the returned container.
+So you can use any custom implementation like [tl::expected][2] or [tl::optional][3]
 
-If you want to use your own personal implementation your type have to follows concept `expected_like` or `optional_like` provided in the collect.h header file
+If you wish to use your own implementation, your type must follow the expected_like or optional_like concepts provided in the collect.h header file.
 
 ## Limitations
 
@@ -109,9 +110,10 @@ For `std::input_range`, result values are allocated on the fly and destroyed if 
 *Special thanks to Sy Brand and his `std::ranges::to` implementation [video][7], which taught me a lot about how to implement this project.*
 
   [1]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.collect
-  [2]: https://github.com/jileventreur/collect/blob/master/include/collect.h
-  [3]: https://github.com/TartanLlama/expected
-  [4]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.collect
-  [5]: https://ericniebler.github.io/range-v3/structranges_1_1views_1_1cache1__fn.html
-  [6]: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p3138r0.html
-  [7]: https://www.youtube.com/watch?v=lU403RAZV0I
+  [2]: https://godbolt.org/z/4bGo5jfsv
+  [3]: https://github.com/jileventreur/collect/blob/master/include/collect.h
+  [4]: https://github.com/TartanLlama/expected
+  [5]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.collect
+  [6]: https://ericniebler.github.io/range-v3/structranges_1_1views_1_1cache1__fn.html
+  [7]: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p3138r0.html
+  [8]: https://www.youtube.com/watch?v=lU403RAZV0I
