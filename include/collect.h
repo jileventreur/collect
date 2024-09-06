@@ -185,41 +185,45 @@ namespace ranges {
     /// first error found in the range
     /// </returns>
     template <std::ranges::input_range Container,
-        std::ranges::input_range R, typename... Args,
-        class return_type = collect_return_t<Container, std::ranges::range_value_t<R>>>
-        requires
-    (!std::ranges::view<Container>) // ensure Container is container and not view
-        && detail::potential_type<std::ranges::range_value_t<R>>
-        && (std::convertible_to<
-            std::ranges::range_value_t<Container>,
-            typename std::ranges::range_value_t<R>::value_type>)
-        [[nodiscard]] constexpr return_type collect(R&& range, Args&&... args)
+              std::ranges::input_range R, typename... Args>
+    requires (!std::ranges::view<Container>) // ensure Container is container and not view
+    [[nodiscard]] constexpr auto collect(R&& range, Args&&... args)
     {
-        // two pass construction case : first check then construct
-        if constexpr (std::ranges::forward_range<R>)
+        if constexpr (!detail::potential_type<std::ranges::range_value_t<R>>)
         {
-            // check if error on first pass
-            for (auto&& potential_value : range) {
-                if (potential_value.has_value() == false)
-                    return return_type(detail::construct_error<return_type>(std::move(potential_value)));
-            }
-            //construct from transform
-            auto transform_view = range
-                | std::views::transform([](auto&& exp) { return exp.value(); });
-            return return_type(transform_view | std::ranges::to<Container>(std::forward<Args>(args)...));
+            return std::ranges::to<Container>(std::forward<R>(range));
         }
-        static_assert(detail::insertable<Container>, "Container is not insertable");
-        // one pass construction case : check and fill on the fly
-        return detail::collect_one_pass<Container>(range, std::forward<Args>(args)...);
+        else {
+            using return_type = collect_return_t<Container, std::ranges::range_value_t<R>>;
+            // two pass construction case : first check then construct
+            if constexpr (std::ranges::forward_range<R>)
+            {
+                // check if error on first pass
+                for (auto&& potential_value : range) {
+                    if (potential_value.has_value() == false)
+                        return return_type(detail::construct_error<return_type>(std::move(potential_value)));
+                }
+                //construct from transform
+                auto transform_view = range
+                    | std::views::transform([](auto&& exp) { return exp.value(); });
+                return return_type(transform_view | std::ranges::to<Container>(std::forward<Args>(args)...));
+            }
+            static_assert(detail::insertable<Container>, "Container is not insertable");
+            // one pass construction case : check and fill on the fly
+            return detail::collect_one_pass<Container>(range, std::forward<Args>(args)...);
+        }
     }
 
     template <template <typename...> typename Container = std::vector,
         std::ranges::input_range R, typename... Args>
-        requires detail::potential_type<std::ranges::range_value_t<R>>
     [[nodiscard]] constexpr
         auto collect(R&& r, Args&&... args) {
-        using exp_value = typename std::ranges::range_value_t<R>::value_type;
-        return collect<Container<exp_value>>(std::forward<R>(r), std::forward<Args>(args)...);
+        if constexpr (detail::potential_type<std::ranges::range_value_t<R>>) {
+            using exp_value = typename std::ranges::range_value_t<R>::value_type;
+            return collect<Container<exp_value>>(std::forward<R>(r), std::forward<Args>(args)...);
+        } else {
+            return collect<Container<std::ranges::range_value_t<R>>>(std::forward<R>(r), std::forward<Args>(args)...);
+        }
     }
 }  // namespace ranges
 

@@ -35,6 +35,29 @@ TEST_CASE("basic optional") {
     REQUIRE(opt_value == OptOfVec(std::vector<int>{1, 2, 3}));
 }
 
+constexpr void as_ranges_to_if_no_potential()
+{
+    std::vector vec{ 1, 2, 3 };
+
+    using generator = std::function<std::list<int>(void)>;
+    std::vector<generator> generators{
+        [&] { return ranges::collect<std::list<int>>(vec); },
+        [&] { return vec | ranges::collect<std::list<int>>(); },
+        [&] { return vec | ranges::collect<std::list>(); },
+        [&] { return ranges::collect<std::list>(vec); },
+    };
+    for (auto& generator : generators)
+    {
+        auto res = generator();
+        REQUIRE(res == std::list{ 1, 2, 3 });
+    }
+}
+
+#include <functional>
+TEST_CASE("as ranges::to if no potential_type") {
+    as_ranges_to_if_no_potential();
+}
+
 TEST_CASE("partially specify vector") {
     VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
     VecOfExp no_error = { 1, 2, 3 };
@@ -296,7 +319,6 @@ TEST_CASE("conversion test") {
 }
 
 #include <memory_resource>
-#include <functional>
 #include <array>
 TEST_CASE("allocator") {
     VecOfExp no_error = { 1, 2, 3 };
@@ -349,6 +371,7 @@ TEST_CASE("constexpr test") {
 
     REQUIRE(constexpr_test<decltype([] { return basic_test(); })>());
     REQUIRE(constexpr_test<decltype([] { return one_pass_basic_test(); })>());
+    constexpr_test<decltype([] { as_ranges_to_if_no_potential(); })>();
 }
 
 

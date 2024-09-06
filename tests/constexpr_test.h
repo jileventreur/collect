@@ -38,7 +38,7 @@ template<template<class...> class Op, class... Args>
 static constexpr auto is_detected_v = is_detected<Op, Args...>::value;
 
 template <class CallableTest>
-bool constexpr_test()
+auto constexpr_test()
 {
     constexpr bool compiled = is_detected_v <result_test, CallableTest>;
     if constexpr (!compiled) {
