@@ -91,7 +91,7 @@ std::vector<std::vector<std::expected<int, std::string>>> vec2d = {
     {4, 5, 6},
     {7, 8, 9},
 };
-std::expected<std::list<std::list<int>> res = vec2d | ranges::collect<std::list<std::list<int>>>();
+std::expected<std::list<std::list<int>>, std::string> res = vec2d | ranges::collect<std::list<std::list<int>>>();
 ```
 
 * You can provide the returned container args if needed :
