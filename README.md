@@ -54,7 +54,7 @@ This function could easily be implemented to work with the c++20 standard in the
 ## Installation
 `collect` is not available in any package manager at the moment. 
 The function is contained in a single header file that can be found at [include/collect.h][2]. So you can easily copy it and integrate it into your project.
-If you want to run the tests, you'll need CMake version .14 or higher.
+If you want to run the tests, you'll need CMake version 3.14 or higher.
 
 ## Possibilities
 
