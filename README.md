@@ -74,6 +74,26 @@ std::vector<std::optional<int>> vec = { 1, std::nullopt, 3};
 std::optional<std::list<int>> exp_error = vec | ranges::collect<std::list>();
 ```
 
+*  Works with associative containers :
+```cpp
+    std::vector vec{
+        std::optional(std::pair<int, int>(0, 1)),
+         std::optional(std::pair<int, int>(2, 3)),
+         std::optional(std::pair<int, int>(4, 5)),
+    };
+    std::optional<std::map<int, int>> res = vec | ranges::collect<std::map<int, int>>();
+```
+
+* Works with nested containers of expected or optional like type :
+```cpp
+std::vector<std::vector<std::expected<int, std::string>>> vec2d = {
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9},
+};
+std::expected<std::list<std::list<int>> res = vec2d | ranges::collect<std::list<std::list<int>>>();
+```
+
 * You can provide the returned container args if needed :
 ```cpp
 std::vector<std::optional<int>> vec = { 1, std::nullopt, 3};
@@ -92,7 +112,6 @@ If you wish to use your own implementation, your type must follow the expected_l
 
 ## Limitations
 
-* Currently, `ranges::collect` does not handle nested collections.
 * Unlike the [collect][1] function in rust, `ranges::collect` only works on ranges containing a `optional` or `expected`. for other ranges the collect function in rust acts like `std::ranges:to` so you should use it instead.
 
 This is a work in progress and those limitations should be removed in a near future in master or in a parallel branch.

@@ -337,6 +337,55 @@ TEST_CASE("allocator") {
     }
 }
 
+TEST_CASE("nested containers optional") {
+    std::vector<std::vector<std::optional<int>>> vec2d = {
+        {1, 2, 3},
+        {4, 5, 6},
+        {7, 8, 9},
+    };
+    auto res = vec2d | ranges::collect<std::list<std::list<int>>>();
+    REQUIRE(std::same_as<decltype(res), std::optional<std::list<std::list<int>>>>);
+    const std::list<std::list<int>> lst2d = {
+        {1, 2, 3},
+        {4, 5, 6},
+        {7, 8, 9},
+    };
+    REQUIRE(res.has_value());
+    REQUIRE(res.value() == lst2d);
+    vec2d = {
+        {1, 2, 3},
+        {4, std::nullopt, 6},
+        {7, 8, 9},
+    };
+    res = ranges::collect<std::list<std::list<int>>>(vec2d);
+    REQUIRE(res.has_value() == false);
+}
+
+TEST_CASE("nested containers expected") {
+    std::vector<std::vector<std::expected<int, std::string>>> vec2d = {
+        {1, 2, 3},
+        {4, 5, 6},
+        {7, 8, 9},
+    };
+    auto res = vec2d | ranges::collect<std::list<std::list<int>>>();
+    REQUIRE(std::same_as<decltype(res), std::expected<std::list<std::list<int>>, std::string>>);
+    const std::list<std::list<int>> lst2d = {
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9},
+    };
+    REQUIRE(res.has_value());
+    REQUIRE(res.value() == lst2d);
+    vec2d = {
+        {1, 2, 3},
+        {4, std::unexpected("fiduciaire"), 6},
+        {7, 8, 9},
+    };
+    res = ranges::collect<std::list<std::list<int>>>(vec2d);
+    REQUIRE(res.has_value() == false);
+    REQUIRE(res.error() == std::string("fiduciaire"));
+}
+
 // -------- CONSTEXPR TESTS -------- 
 constexpr bool basic_test(){
     VecOfExp has_error = { 1, 2, std::unexpected("NOT INT") };
@@ -376,28 +425,7 @@ TEST_CASE("constexpr test") {
     REQUIRE(constexpr_test<decltype([] { return as_ranges_to_if_no_potential(); })>());
 }
 
-
 // -------------- CASES NOT WORKING FTM --------------
-
-//NESTED WIP
-//TEST_CASE("acts like ranges::to if no potential underneath") {
-
-    //std::ranges::input_range<std::vector>;
-
-    //std::vector<std::vector<int>> vec2d = { 
-    //    {1, 2, 3},
-    //    {4, 5, 6},
-    //    {7, 8, 9},
-    //};
-    //auto res = vec2d | ranges::collect<std::list<std::list<int>>>();
-    //REQUIRE(std::same_as<decltype(res), std::list<std::list<int>>>);
-    //const std::list<std::list<int>> lst2d = {
-    //{1, 2, 3},
-    //{4, 5, 6},
-    //{7, 8, 9},
-    //};
-    //REQUIRE(res == lst2d);
-//}
 
 //// TODO 
 //// for reservable container + sized range reserve before filling OK

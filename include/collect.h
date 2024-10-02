@@ -43,7 +43,9 @@ namespace detail {
     template <typename T, size_t N>
     using get_template_n_arg_type_t = get_template_n_arg_type<T, N>::type;
 
-    /// Need to check is_template + one template arg + template<T>::value_type = T
+    //Not fully satisfied of this concept.
+    //The best way i found to ensure error creation above 
+    //three most 
     template <typename T>
     concept optional_like =
         requires(T c) {
@@ -114,8 +116,6 @@ namespace detail {
                 "T is neither an expected or optional like type");
     }
 
-
-
     template <typename Container,
         template <typename...> class Exp, class Value, class Error>
         requires(expected_like<Exp<Value, Error>>)
@@ -126,6 +126,28 @@ namespace detail {
         requires(optional_like<Opt<Value>>)
     [[maybe_unused]] constexpr auto get_return_type(Opt<Value>) -> Opt<Container>;
 
+    //R and C are nested range and R range_value is not a potential
+    //And C nested range is not a view (must be container)
+    template <class C, class R>
+    concept matroshkable = std::ranges::input_range<C> 
+        && std::ranges::input_range<R> 
+        && !potential_type<std::ranges::range_value_t<R>>
+        && std::ranges::input_range<std::ranges::range_value_t<C>> 
+        && std::ranges::input_range<std::ranges::range_value_t<R>>
+        && !std::ranges::view<std::ranges::range_value_t<C>> 
+    ;
+
+    template <class T>
+    struct contains_potential_type
+        : std::integral_constant<bool, potential_type<T>> {};
+
+    template <class T>
+        requires std::ranges::range<T> && (!potential_type<T>)
+    struct contains_potential_type<T>
+        : contains_potential_type<std::ranges::range_value_t<T>> {};
+
+    template <typename T>
+    static constexpr bool contains_potential_type_v = contains_potential_type<T>::value;
 
 }  // namespace detail
 
@@ -154,7 +176,7 @@ namespace detail {
             std::ranges::range_value_t<Container>,
             typename std::ranges::range_value_t<R>::value_type>)
 #endif
-        [[nodiscard]] constexpr return_type collect_one_pass(R&& range, Args&&... args)
+    [[nodiscard]] constexpr auto collect_one_pass(R&& range, Args&&... args)
     {
         static_assert(std::constructible_from<Container, Args...>,
             "Container is not constructible from args...");
@@ -186,30 +208,38 @@ namespace ranges {
     /// </returns>
     template <std::ranges::input_range Container,
               std::ranges::input_range R, typename... Args>
-    requires (!std::ranges::view<Container>) // ensure Container is container and not view
+        requires (!std::ranges::view<Container>) // ensure Container is container and not view
     [[nodiscard]] constexpr auto collect(R&& range, Args&&... args)
     {
-        if constexpr (!detail::potential_type<std::ranges::range_value_t<R>>)
+        // if no potential -> acts like std::ranges::to
+        if constexpr (!detail::contains_potential_type_v<R>)
         {
             return std::ranges::to<Container>(std::forward<R>(range));
         }
-        else {
+        //Nested case
+        else if constexpr (detail::matroshkable<Container, R>) {
+            auto collected_subrange = range | std::views::transform([&](auto&& elem) {
+                return ranges::collect<std::ranges::range_value_t<Container>>(elem);
+            });
+            return ranges::collect<Container>(collected_subrange, std::forward<Args>(args)...);
+        }
+        // two pass construction case : first check then construct
+        else if constexpr (std::ranges::forward_range<R>)
+        {
             using return_type = collect_return_t<Container, std::ranges::range_value_t<R>>;
-            // two pass construction case : first check then construct
-            if constexpr (std::ranges::forward_range<R>)
-            {
-                // check if error on first pass
-                for (auto&& potential_value : range) {
-                    if (potential_value.has_value() == false)
-                        return return_type(detail::construct_error<return_type>(std::move(potential_value)));
-                }
-                //construct from transform
-                auto transform_view = range
-                    | std::views::transform([](auto&& exp) { return exp.value(); });
-                return return_type(transform_view | std::ranges::to<Container>(std::forward<Args>(args)...));
+            // check if error on first pass
+            for (auto&& potential_value : range) {
+                if (potential_value.has_value() == false)
+                    return return_type(detail::construct_error<return_type>(std::move(potential_value)));
             }
+            //construct from transform
+            auto transform_view = range
+                | std::views::transform([](auto&& exp) { return exp.value(); });
+            return return_type(transform_view | std::ranges::to<Container>(std::forward<Args>(args)...));
+        }
+        // one pass construction case : check and fill on the fly
+        else {
             static_assert(detail::insertable<Container>, "Container is not insertable");
-            // one pass construction case : check and fill on the fly
             return detail::collect_one_pass<Container>(range, std::forward<Args>(args)...);
         }
     }

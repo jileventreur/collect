@@ -1,7 +1,7 @@
 ﻿#stolen from sy brand ranges
 cmake_minimum_required(VERSION 3.14)
 project(collect 
-  VERSION 0.1.0
+  VERSION 1.1.0
   LANGUAGES CXX)
 
 include(CMakePackageConfigHelpers)
